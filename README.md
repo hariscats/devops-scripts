@@ -1,2 +1,2 @@
 # python-automation
-Python scripts for automating DevOps tasks.
+Python scripts for automating common DevOps tasks.
