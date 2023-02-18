@@ -35,8 +35,8 @@ def verify_cpu_usage():
 
 # If not enough disk or CPU capacity, print error
 if not verify_disk_usage('/') or not verify_cpu_usage():
-    print("ERROR!")
+    print("There isn't enough disk space OR enough unused CPU")
 elif test_localhost() and test_connectivity():
-    print("Everything ok")
+    print("Passed!")
 else:
-    print("Network checks failed")
+    print("The network checks failed.")
