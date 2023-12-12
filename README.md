@@ -18,3 +18,6 @@ This repository contains a collection of scripts designed to automate various ta
 
 - `walk_directory.py`: Traverses a file system from a specified root directory and lists all files and subdirectories.
 
+## Usage
+
+Each script can be run independently from the command line. For specific instructions on how to use each script, refer to the individual script documentation or use the `--help` flag when executing a script.
