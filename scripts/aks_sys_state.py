@@ -1,3 +1,5 @@
+#!/usr/bin/env python3
+
 from kubernetes import client, config
 import sys
 
@@ -7,6 +9,17 @@ def connect_to_cluster():
     return client.CoreV1Api()
 
 def check_nodes(v1):
+    """
+    Checks the status of all nodes in the Kubernetes cluster.
+    Iterates through each node in the cluster and checks its 'Ready' condition. 
+    If any node is not in 'Ready' state, it's considered as a potential issue.
+    
+    Args:
+        v1 (client.CoreV1Api): An instance of the CoreV1Api client to interact with Kubernetes.
+
+    Returns:
+        bool: True if all nodes are in 'Ready' state, False otherwise.
+    """
     print("Checking node statuses...")
     nodes = v1.list_node().items
     for node in nodes:
@@ -17,6 +30,18 @@ def check_nodes(v1):
     return True
 
 def check_system_pods(v1):
+    """
+    Checks the status of system pods in the 'kube-system' namespace.
+
+    Iterates through the pods in the 'kube-system' namespace and checks their phase.
+    If any system pod is not in 'Running' or 'Succeeded' phase, it's flagged as an issue.
+
+    Args:
+        v1 (client.CoreV1Api): An instance of the CoreV1Api client to interact with Kubernetes.
+
+    Returns:
+        bool: True if all system pods are in expected state, False otherwise.
+    """
     print("Checking system pods in kube-system namespace...")
     pods = v1.list_namespaced_pod(namespace="kube-system").items
     for pod in pods:
