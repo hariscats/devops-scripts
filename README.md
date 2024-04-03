@@ -17,6 +17,7 @@ This repository contains a collection of scripts designed to automate various ta
 - `test_web_server.py`: Tests the availability and performance of a web server by sending requests and measuring response times.
 
 - `walk_directory.py`: Traverses a file system from a specified root directory and lists all files and subdirectories.
+- `ExtractK8sCACertificate.py`: simple script to fetch decoded CA cert I wrote for a customer ask.
 
 ## Usage
 
