@@ -22,6 +22,8 @@ This repository contains a collection of scripts designed to automate various ta
   
 - `trace-runner.py`: script to help with debugging Python code.
 
+- `oauth-demo.py`: simple script to demo OAuth flows for clients.
+
 ## Usage
 
 Each script can be run independently from the command line. For specific instructions on how to use each script, refer to the individual script documentation or use the `--help` flag when executing a script.
