@@ -1,8 +1,10 @@
+# Python script for debugging code
+
 import sys
 import trace
-import linecache
 
 def trace_calls(frame, event, arg):
+    """Trace function to log calls to other functions."""
     if event != "call":
         return
     co = frame.f_code
@@ -16,6 +18,7 @@ def trace_calls(frame, event, arg):
     return trace_calls
 
 def trace_lines(frame, event, arg):
+    """Trace function to log executed lines within functions."""
     if event != 'line':
         return
     co = frame.f_code
@@ -26,15 +29,16 @@ def trace_lines(frame, event, arg):
     print(f"{func_name} line {line_no}: {line.strip()}")
 
 def run_trace(file):
-    # Initialize Trace object without 'tracedirs'
+    """Set up tracing and execute the specified Python script."""
+    # The trace.Trace() class can be used with various trace options.
     tracer = trace.Trace(
         trace=True,  # Set true if you want to trace lines executed
         count=False  # Set false unless you need to count executions per line
     )
     tracer.runfunc(execfile, file)
 
-
 def execfile(file):
+    """Execute the given Python file after compiling its source."""
     with open(file) as f:
         code = compile(f.read(), file, 'exec')
         exec(code, {'__name__': '__main__'})
