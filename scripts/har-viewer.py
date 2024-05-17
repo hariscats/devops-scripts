@@ -1,3 +1,19 @@
+"""
+1. Analyzing the HAR file:
+   - The program reads the downloaded HAR file, which is in JSON format, and iterates through the entries 
+     recorded in file.
+   - It checks both the request and response headers of each entry to determine if the CSRF token is present.
+   - If the CSRF token is missing in either the request or response headers, it logs these entries as potential 
+     issues.
+
+2. Reporting the findings:
+   - The program prints out the URLs and details of any entries where the CSRF token is missing in the headers, 
+     helping to identify potential security vulnerabilities related to CSRF protection.
+
+By automating the process of downloading and analyzing HAR files, this program assists developers and security 
+professionals in identifying and addressing CSRF token issues in web applications.
+"""
+
 import json
 
 # Function to analyze the HAR file for CSRF token issues
