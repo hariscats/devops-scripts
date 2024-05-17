@@ -24,6 +24,8 @@ This repository contains a collection of scripts designed to automate various ta
 
 - `oauth-demo.py`: simple script to demo OAuth flows for clients.
 
+- `har-viewer.py`: script that iterates over HAR file to detect CSRF issues.
+
 ## Usage
 
 Each script can be run independently from the command line. For specific instructions on how to use each script, refer to the individual script documentation or use the `--help` flag when executing a script.
