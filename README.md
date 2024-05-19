@@ -2,7 +2,7 @@
 
 This repository contains a collection of scripts for ad-hoc DevOps tasks and automation.
 
-## Scripts
+## Python
 
 - `check_health.py`: Verifies the health of a system or service.
 - `cli_template.py`: Template for building CLI applications in Python.
@@ -15,6 +15,11 @@ This repository contains a collection of scripts for ad-hoc DevOps tasks and aut
 - `trace-runner.py`: Helps with debugging Python code.
 - `oauth-demo.py`: Demonstrates OAuth flows for clients.
 - `har-viewer.py`: Detects CSRF issues in HAR files.
+
+## K8s
+
+- `monitor-resources.sh`: Monitors CPU and memory usage, resource requests and limits, and node capacities for debugging.
+- `check-security.sh`: Checks for common security misconfigurations.
 
 ## Usage
 
