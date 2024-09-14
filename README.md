@@ -15,6 +15,7 @@ This repository contains a collection of scripts for ad-hoc DevOps tasks and aut
 - `trace-runner.py`: Helps with debugging Python code.
 - `oauth-demo.py`: Demonstrates OAuth flows for clients.
 - `har-viewer.py`: Detects CSRF issues in HAR files.
+- `check_vm_capacity.py`: Check Azure VM SKU availability in region and subscription.
 
 ## K8s
 
