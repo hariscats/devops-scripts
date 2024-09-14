@@ -7,7 +7,7 @@ logging.basicConfig(level=logging.INFO, format='%(levelname)s: %(message)s')
 
 # List of regions and SKUs to check
 regions = ["eastus", "westus", "centralus", "eastus2", "westus2"]
-skus_to_check = ["Standard_G2", "Standard_B2ms", "Standard_F4s_v2"]
+skus_to_check = ["Standard_D2s_v3", "Standard_B2ms", "Standard_F4s_v2"]
 
 def fetch_skus_for_region(region):
     """
@@ -39,20 +39,47 @@ def fetch_skus_for_region(region):
         logging.error(f"Exception occurred while fetching SKUs for region {region}: {e}")
         return None
 
-def is_sku_available(region, sku, skus):
+def is_sku_available_for_subscription(sku):
     """
-    Checks if a given SKU is available in the list of SKUs for a region.
+    Checks if the SKU is available for the subscription (i.e., not restricted by 'NotAvailableForSubscription').
+
+    Args:
+        sku (dict): SKU object containing the details for availability.
+
+    Returns:
+        bool: True if the SKU is available for the subscription, False if restricted.
+    """
+    restrictions = sku.get("restrictions", [])
+    
+    # Check for any restriction that has the reason "NotAvailableForSubscription"
+    for restriction in restrictions:
+        if restriction.get("reasonCode") == "NotAvailableForSubscription":
+            return False
+
+    return True
+
+def is_sku_available(region, sku_name, skus):
+    """
+    Checks if a given SKU is available in the list of SKUs for a region, considering subscription restrictions.
 
     Args:
         region (str): Azure region name.
-        sku (str): VM SKU name to check.
+        sku_name (str): VM SKU name to check.
         skus (list): List of SKU objects for the region.
 
     Returns:
-        bool: True if SKU is available, False otherwise.
+        bool: True if SKU is available and not restricted, False otherwise.
     """
-    # Use list comprehension to find if SKU exists in the available SKUs for the region
-    return any(item['name'] == sku for item in skus)
+    # Find the SKU in the list for the given name
+    for sku in skus:
+        if sku['name'] == sku_name:
+            # Check if it is available for the subscription (no restriction)
+            if is_sku_available_for_subscription(sku):
+                return True
+            else:
+                logging.info(f"SKU {sku_name} is restricted for subscription in {region}.")
+                return False
+    return False
 
 def check_sku_availability_in_all_regions(skus_to_check, regions):
     """
