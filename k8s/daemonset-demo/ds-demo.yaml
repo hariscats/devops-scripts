@@ -1,0 +1,55 @@
+apiVersion: apps/v1
+kind: DaemonSet
+metadata:
+  name: host-info
+  namespace: default
+spec:
+  selector:
+    matchLabels:
+      app: host-info
+  template:
+    metadata:
+      labels:
+        app: host-info
+    spec:
+      # Optionally enable host networking if needed, though it should be used cautiously.
+      hostNetwork: true
+      containers:
+        - name: host-info
+          image: busybox
+          command:
+            - sh
+            - -c
+            - |
+              echo "Gathering host CPU information from /proc/cpuinfo:";
+              cat /host/proc/cpuinfo;
+              echo "Gathering kernel version information from /proc/version:";
+              cat /host/proc/version;
+              echo "Gathering kernel release information from /proc/sys/kernel/osrelease:";
+              cat /host/proc/sys/kernel/osrelease;
+              echo "Gathering memory information from /proc/meminfo:";
+              cat /host/proc/meminfo;
+              echo "Gathering disk usage information:";
+              df -h;
+              echo "Gathering network interfaces information:";
+              cat /host/proc/net/dev;
+              sleep 3600
+          volumeMounts:
+            - name: proc
+              mountPath: /host/proc
+              readOnly: true
+          resources:
+            requests:
+              cpu: "100m"
+              memory: "100Mi"
+            limits:
+              cpu: "200m"
+              memory: "200Mi"
+      volumes:
+        - name: proc
+          hostPath:
+            path: /proc
+            type: Directory
+      # Tolerate all taints to ensure the DaemonSet runs on all nodes.
+      tolerations:
+        - operator: "Exists"
