@@ -1,8 +1,8 @@
 # Python script for debugging code using the trace module
 
+import linecache  # Import linecache for trace_lines
 import sys
 import trace
-import linecache # Import linecache for trace_lines
 
 # --- Custom Trace Functions (Optional: trace.Trace provides built-in tracing) ---
 # You can uncomment and use these if you need highly customized trace output.
@@ -34,21 +34,23 @@ import linecache # Import linecache for trace_lines
 #     return trace_lines # Return itself to continue tracing lines
 # --- End Custom Trace Functions ---
 
+
 def execute_script(filepath):
     """Execute the given Python file after compiling its source."""
     try:
-        with open(filepath, 'r') as f:
+        with open(filepath, "r") as f:
             # Using globals() and locals() provides a more standard execution environment
-            global_vars = {'__name__': '__main__', '__file__': filepath}
+            global_vars = {"__name__": "__main__", "__file__": filepath}
             local_vars = global_vars
-            code = compile(f.read(), filepath, 'exec')
-            exec(code, global_vars, local_vars)
+            code = compile(f.read(), filepath, "exec")
+            exec(code, global_vars, local_vars)  # nosec
     except FileNotFoundError:
         print(f"Error: Script file not found: {filepath}", file=sys.stderr)
         sys.exit(1)
     except Exception as e:
         print(f"Error executing script {filepath}: {e}", file=sys.stderr)
         sys.exit(1)
+
 
 def run_with_trace(filepath):
     """Set up tracing using trace.Trace and execute the specified Python script."""
@@ -60,7 +62,7 @@ def run_with_trace(filepath):
         trace=1,
         count=0,
         timing=True,
-        ignoredirs=[sys.prefix, sys.exec_prefix] # Ignore standard library paths
+        ignoredirs=[sys.prefix, sys.exec_prefix],  # Ignore standard library paths
     )
 
     # Run the target script's execution function under the tracer's control.
@@ -69,12 +71,17 @@ def run_with_trace(filepath):
     try:
         # Pass an empty dict initially for globals/locals within runctx
         # The actual execution happens inside execute_script
-        tracer.runctx('execute_script(filepath)', globals={'execute_script': execute_script, 'filepath': filepath}, locals={})
+        tracer.runctx(
+            "execute_script(filepath)",
+            globals={"execute_script": execute_script, "filepath": filepath},
+            locals={},
+        )
     finally:
         print(f"--- Ending trace for {filepath} ---")
         # Get trace results (optional, trace output is printed during execution)
         # results = tracer.results()
         # results.write_results(show_missing=True, coverdir=".") # Example: Write coverage data
+
 
 if __name__ == "__main__":
     if len(sys.argv) < 2:

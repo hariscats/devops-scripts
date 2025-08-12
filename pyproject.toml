@@ -1,0 +1,112 @@
+[build-system]
+requires = ["setuptools>=45", "wheel", "setuptools_scm"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "devops-tools"
+description = "Collection of DevOps automation scripts and utilities"
+readme = "README.md"
+requires-python = ">=3.8"
+license = {text = "MIT"}
+authors = [
+    {name = "Hariscats", email = "your-email@example.com"}
+]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: System Administrators",
+    "License :: OSI Approved :: MIT License",
+    "Operating System :: OS Independent",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.8",
+    "Programming Language :: Python :: 3.9",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Topic :: System :: Systems Administration",
+    "Topic :: Utilities",
+]
+dynamic = ["version"]
+dependencies = [
+    "requests>=2.31.0",
+    "click>=8.1.0",
+    "rich>=13.0.0",
+    "pyyaml>=6.0",
+    "boto3>=1.34.0",
+    "docker>=6.1.0",
+    "psutil>=5.9.0",
+    "gitpython>=3.1.0",
+    "flask>=2.3.0",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=7.4.0",
+    "pytest-cov>=4.1.0",
+    "black>=23.0.0",
+    "flake8>=6.0.0",
+    "mypy>=1.5.0",
+    "pre-commit>=3.3.0",
+]
+
+[project.scripts]
+aws-inspector = "devops_tools.aws.inspector:main"
+docker-utils = "devops_tools.containers.docker_manager:main"
+system-monitor = "devops_tools.monitoring.system_monitor:main"
+git-analyzer = "devops_tools.git.analyzer:main"
+log-analyzer = "devops_tools.monitoring.log_analyzer:main"
+har-viewer = "devops_tools.web.har_viewer:main"
+trace-runner = "devops_tools.monitoring.trace_runner:main"
+
+[project.urls]
+Homepage = "https://github.com/hariscats/devops-scripts"
+Repository = "https://github.com/hariscats/devops-scripts"
+"Bug Tracker" = "https://github.com/hariscats/devops-scripts/issues"
+
+[tool.setuptools_scm]
+write_to = "src/devops_tools/_version.py"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.black]
+line-length = 100
+target-version = ['py38', 'py39', 'py310', 'py311']
+include = '\.pyi?$'
+
+[tool.mypy]
+python_version = "3.8"
+warn_return_any = true
+warn_unused_configs = true
+disallow_untyped_defs = true
+
+[tool.pytest.ini_options]
+minversion = "7.0"
+addopts = "-ra -q --strict-markers --strict-config"
+testpaths = ["tests"]
+python_files = ["test_*.py"]
+python_classes = ["Test*"]
+python_functions = ["test_*"]
+
+[tool.coverage.run]
+source = ["src"]
+omit = ["*/tests/*", "*/test_*"]
+
+[tool.coverage.report]
+exclude_lines = [
+    "pragma: no cover",
+    "def __repr__",
+    "raise AssertionError",
+    "raise NotImplementedError",
+]
+
+[tool.bandit]
+exclude_dirs = ["tests"]
+skips = ["B101", "B601", "B404", "B602", "B603", "B605", "B607", "B102"]
+
+[tool.flake8]
+max-line-length = 100
+extend-ignore = ["E203", "W503", "D100", "D101", "D103"]
+per-file-ignores = [
+    "tests/*:D100,D101,D102,D103,D104",
+    "examples/*:D100,D101,D102,D103,D104",
+    "__init__.py:F401",
+]

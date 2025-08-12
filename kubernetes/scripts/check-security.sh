@@ -63,7 +63,7 @@ check_unencrypted_secrets() {
   kubectl get secrets --all-namespaces -o json | jq -r '
     .items[] |
     select(.type != "kubernetes.io/service-account-token") |
-    .data | keys[] as $k | 
+    .data | keys[] as $k |
     "\(.metadata.namespace) \(.metadata.name) \($k)"' | while read -r namespace secret key; do
       log "Secret $secret in namespace $namespace contains key $key which may be unencrypted"
   done

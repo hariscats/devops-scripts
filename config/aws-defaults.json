@@ -1,0 +1,28 @@
+{
+  "default_regions": [
+    "us-east-1",
+    "us-west-2",
+    "eu-west-1"
+  ],
+  "cost_analysis": {
+    "currency": "USD",
+    "threshold_percentage": 10,
+    "lookback_days": 30
+  },
+  "security_checks": {
+    "check_public_access": true,
+    "check_encryption": true,
+    "check_vpc_flow_logs": true,
+    "check_cloudtrail": true
+  },
+  "resource_filters": {
+    "exclude_terminated": true,
+    "exclude_stopped": false,
+    "minimum_age_days": 1
+  },
+  "output": {
+    "format": "json",
+    "include_tags": true,
+    "include_costs": true
+  }
+}

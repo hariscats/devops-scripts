@@ -1,0 +1,29 @@
+# Core dependencies
+requests>=2.31.0
+click>=8.1.0
+rich>=13.0.0
+pyyaml>=6.0
+
+# AWS tools
+boto3>=1.34.0
+botocore>=1.34.0
+
+# Container tools
+docker>=6.1.0
+
+# Monitoring tools
+psutil>=5.9.0
+
+# Git tools
+gitpython>=3.1.0
+
+# Web tools
+flask>=2.3.0
+
+# Development dependencies
+pytest>=7.4.0
+pytest-cov>=4.1.0
+black>=23.0.0
+flake8>=6.0.0
+mypy>=1.5.0
+pre-commit>=3.3.0

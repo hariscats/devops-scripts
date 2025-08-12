@@ -1,0 +1,36 @@
+{
+  "system": {
+    "cpu_warning_threshold": 80,
+    "cpu_critical_threshold": 95,
+    "memory_warning_threshold": 85,
+    "memory_critical_threshold": 95,
+    "disk_warning_threshold": 80,
+    "disk_critical_threshold": 90
+  },
+  "docker": {
+    "container_restart_threshold": 5,
+    "image_size_warning_gb": 5,
+    "volume_usage_warning_threshold": 80
+  },
+  "logs": {
+    "error_keywords": [
+      "ERROR",
+      "FATAL",
+      "CRITICAL",
+      "Exception",
+      "Failed",
+      "Timeout"
+    ],
+    "warning_keywords": [
+      "WARN",
+      "WARNING",
+      "Deprecated",
+      "Retry"
+    ]
+  },
+  "alerts": {
+    "enable_notifications": false,
+    "webhook_url": "",
+    "email_recipients": []
+  }
+}
