@@ -1,165 +1,331 @@
 #!/usr/bin/env python3
 """
-Minimal Azure API Management (APIM) subscription key rotation script.
+Azure API Management (APIM) subscription key rotation script.
 
-- Auth: DefaultAzureCredential (works with `az login`, Managed Identity, or SP env vars)
-- Endpoints used: regeneratePrimaryKey, regenerateSecondaryKey, listSecrets
-- Demo: rotates keys for two APIM subscriptions: sub1 and sub2
+Rotates primary and secondary keys for two APIM subscription entities (SIDs).
+Shows only short key prefixes, never full keys. Writes a JSON summary.
+
+Environment:
+  AZURE_SUBSCRIPTION_ID   (required unless placeholder replaced)
+  RESOURCE_GROUP          (required)
+  APIM_SERVICE_NAME       (required)
+  SUBSCRIPTION_SID_1      (default: sub1)
+  SUBSCRIPTION_SID_2      (default: sub2)
+
+Authentication:
+  Uses DefaultAzureCredential (supports az login, Managed Identity, Service Principal).
 
 Usage:
-  1) Ensure authentication is available (e.g., `az login` or SP env vars)
-  2) Set environment variables (or edit defaults below):
-     AZURE_SUBSCRIPTION_ID, RESOURCE_GROUP, APIM_SERVICE_NAME,
-     SUBSCRIPTION_SID_1, SUBSCRIPTION_SID_2 (optional)
-  3) Run: python apim_key_manager.py
+  az login
+  export AZURE_SUBSCRIPTION_ID=...
+  export RESOURCE_GROUP=...
+  export APIM_SERVICE_NAME=...
+  python apim_key_manager.py
 """
 
 from __future__ import annotations
 
+import hashlib
 import json
+import logging
 import os
 import sys
 import time
-from dataclasses import dataclass
-from typing import Dict, Optional, cast
+from dataclasses import asdict, dataclass
+from typing import Any, Dict, List, Optional, Sequence
 
 import requests
 from azure.identity import DefaultAzureCredential
 
+# ---------------------------------------------------------------------------
+# Constants
+# ---------------------------------------------------------------------------
+
 API_VERSION = "2024-05-01"
+ARM_SCOPE = "https://management.azure.com/.default"
 BASE_URL = "https://management.azure.com"
+SUCCESS_CODES: tuple[int, ...] = (200, 201, 202, 204)
+DEFAULT_TIMEOUT = 30
+RETRY_STATUS_CODES: tuple[int, ...] = (429,)
+RETRY_ATTEMPTS = 3
+SUMMARY_FILE = "apim_key_rotation_summary.json"
+KEY_PREFIX_LEN = 8
+
+# ---------------------------------------------------------------------------
+# Logging
+# ---------------------------------------------------------------------------
+
+logger = logging.getLogger("apim.key_rotation")
+if not logger.handlers:
+    _handler = logging.StreamHandler()
+    _handler.setFormatter(logging.Formatter("%(asctime)s %(levelname)s %(message)s"))
+    logger.addHandler(_handler)
+logger.setLevel(logging.INFO)
+
+# ---------------------------------------------------------------------------
+# Data Structures
+# ---------------------------------------------------------------------------
 
 
-@dataclass
+@dataclass(frozen=True)
 class APIMPath:
     subscription_id: str
     resource_group: str
     service_name: str
 
 
+@dataclass
+class OperationResult:
+    sid: str
+    regenerate_primary_status: Optional[int]
+    regenerate_secondary_status: Optional[int]
+
+
+@dataclass
+class ApiResponse:
+    ok: bool
+    status: int
+    data: Dict[str, Any]
+    error: Optional[Any]
+
+
+# ---------------------------------------------------------------------------
+# Exceptions
+# ---------------------------------------------------------------------------
+
+
+class APIMClientError(RuntimeError):
+    """Raised for unrecoverable APIM client issues."""
+
+
+# ---------------------------------------------------------------------------
+# Client
+# ---------------------------------------------------------------------------
+
+
 class APIMClient:
-    """Very small APIM REST client for key operations."""
+    """Minimal APIM REST client for subscription key operations."""
 
-    def __init__(self, path: APIMPath, credential: Optional[DefaultAzureCredential] = None):
-        """Initialize client with APIM path context and optional credential."""
-        self.path = path
-        self.credential = credential or DefaultAzureCredential()
+    def __init__(
+        self,
+        path: APIMPath,
+        credential: Optional[DefaultAzureCredential] = None,
+        session: Optional[requests.Session] = None,
+        timeout: int = DEFAULT_TIMEOUT,
+    ) -> None:
+        self._path = path
+        self._credential = credential or DefaultAzureCredential()
+        self._session = session or requests.Session()
+        self._timeout = timeout
 
-    def _token(self) -> str:
-        """Acquire a bearer token for Azure Resource Manager scope."""
-        return cast(str, self.credential.get_token("https://management.azure.com/.default").token)
+    # Public operations -----------------------------------------------------
 
-    def _request(
-        self, method: str, url: str, json_body: Optional[Dict] = None
-    ) -> requests.Response:
-        headers = {"Authorization": f"Bearer {self._token()}", "Content-Type": "application/json"}
-        # Minimal retry for 429 (rate limiting)
-        last = None
-        for attempt in range(3):
-            resp = requests.request(method, url, headers=headers, json=json_body, timeout=30)
-            if resp.status_code != 429:
-                return resp
-            retry_after = int(resp.headers.get("Retry-After", "2"))
-            time.sleep(min(30, retry_after * (attempt + 1)))
-            last = resp
-        return last or resp
-
-    def _base(self) -> str:
-        return (
-            f"{BASE_URL}/subscriptions/{self.path.subscription_id}"
-            f"/resourceGroups/{self.path.resource_group}"
-            f"/providers/Microsoft.ApiManagement/service/{self.path.service_name}"
+    def regenerate_primary(self, sid: str) -> ApiResponse:
+        return self._execute(
+            "POST",
+            f"{self._base()}/subscriptions/{sid}/regeneratePrimaryKey?api-version={API_VERSION}",
         )
 
-    def regenerate_primary(self, sid: str) -> Dict:
-        url = f"{self._base()}/subscriptions/{sid}/regeneratePrimaryKey?api-version={API_VERSION}"
-        return self._parse(self._request("POST", url))
+    def regenerate_secondary(self, sid: str) -> ApiResponse:
+        return self._execute(
+            "POST",
+            f"{self._base()}/subscriptions/{sid}/regenerateSecondaryKey?api-version={API_VERSION}",
+        )
 
-    def regenerate_secondary(self, sid: str) -> Dict:
-        url = f"{self._base()}/subscriptions/{sid}/regenerateSecondaryKey?api-version={API_VERSION}"
-        return self._parse(self._request("POST", url))
+    def list_secrets(self, sid: str) -> ApiResponse:
+        return self._execute(
+            "POST",
+            f"{self._base()}/subscriptions/{sid}/listSecrets?api-version={API_VERSION}",
+        )
 
-    def list_secrets(self, sid: str) -> Dict:
-        url = f"{self._base()}/subscriptions/{sid}/listSecrets?api-version={API_VERSION}"
-        return self._parse(self._request("POST", url))
+    # Internal helpers -----------------------------------------------------
+
+    def _token(self) -> str:
+        return self._credential.get_token(ARM_SCOPE).token  # type: ignore[return-value]
+
+    def _base(self) -> str:
+        p = self._path
+        return (
+            f"{BASE_URL}/subscriptions/{p.subscription_id}"
+            f"/resourceGroups/{p.resource_group}"
+            f"/providers/Microsoft.ApiManagement/service/{p.service_name}"
+        )
+
+    def _execute(self, method: str, url: str) -> ApiResponse:
+        headers = {
+            "Authorization": f"Bearer {self._token()}",
+            "Content-Type": "application/json",
+            "User-Agent": "devops-scripts/apim-key-rotation",
+        }
+        last_resp: Optional[requests.Response] = None
+        for attempt in range(1, RETRY_ATTEMPTS + 1):
+            try:
+                resp = self._session.request(
+                    method,
+                    url,
+                    headers=headers,
+                    timeout=self._timeout,
+                )
+                if resp.status_code not in RETRY_STATUS_CODES:
+                    return self._parse(resp)
+                retry_after = int(resp.headers.get("Retry-After", "2"))
+                sleep_for = min(30, retry_after * attempt)
+                logger.warning(
+                    "Transient status %s on attempt %d (sleep %ss)",
+                    resp.status_code,
+                    attempt,
+                    sleep_for,
+                )
+                last_resp = resp
+                time.sleep(sleep_for)
+            except requests.RequestException as exc:
+                logger.warning("Request error on attempt %d: %s", attempt, exc)
+                last_resp = None
+                time.sleep(min(30, attempt * 2))
+        if last_resp is None:
+            raise APIMClientError("Failed to obtain a response after retries")
+        return self._parse(last_resp)
 
     @staticmethod
-    def _parse(resp: requests.Response) -> Dict:
+    def _parse(resp: requests.Response) -> ApiResponse:
         try:
             data = resp.json() if resp.text else {}
         except ValueError:
             data = {"raw": resp.text}
-        return {
-            "ok": resp.status_code in (200, 201, 202, 204),
-            "status": resp.status_code,
-            "data": data,
-            "error": None if 200 <= resp.status_code < 300 else (data or resp.text),
-        }
+        ok = resp.status_code in SUCCESS_CODES
+        return ApiResponse(
+            ok=ok, status=resp.status_code, data=data, error=None if ok else data or resp.text
+        )
 
 
-def main() -> int:
-    # Basic configuration (env vars or edit defaults)
+# ---------------------------------------------------------------------------
+# High-level rotation
+# ---------------------------------------------------------------------------
+
+
+def key_preview(key: Optional[str]) -> str:
+    if not key:
+        return "N/A"
+    return f"{key[:KEY_PREFIX_LEN]}..."
+
+
+def rotate_for_sid(client: APIMClient, sid: str) -> OperationResult:
+    logger.info("SID=%s: starting rotation", sid)
+
+    # Regenerate primary
+    r_primary = client.regenerate_primary(sid)
+    logger.info(
+        "SID=%s: regenerate primary -> %s",
+        sid,
+        f"{r_primary.status}{' OK' if r_primary.ok else ' FAIL'}",
+    )
+
+    # List (before secondary)
+    secrets = client.list_secrets(sid)
+    if secrets.ok:
+        logger.debug(
+            "SID=%s: snapshot primary=%s secondary=%s",
+            sid,
+            key_preview(secrets.data.get("primaryKey")),
+            key_preview(secrets.data.get("secondaryKey")),
+        )
+    else:
+        logger.warning("SID=%s: listSecrets pre-secondary failed (%s)", sid, secrets.status)
+
+    # Regenerate secondary
+    r_secondary = client.regenerate_secondary(sid)
+    logger.info(
+        "SID=%s: regenerate secondary -> %s",
+        sid,
+        f"{r_secondary.status}{' OK' if r_secondary.ok else ' FAIL'}",
+    )
+
+    # Final snapshot
+    after = client.list_secrets(sid)
+    if after.ok:
+        logger.debug(
+            "SID=%s: final primary=%s secondary=%s",
+            sid,
+            key_preview(after.data.get("primaryKey")),
+            key_preview(after.data.get("secondaryKey")),
+        )
+    else:
+        logger.warning("SID=%s: listSecrets post-secondary failed (%s)", sid, after.status)
+
+    return OperationResult(
+        sid=sid,
+        regenerate_primary_status=r_primary.status,
+        regenerate_secondary_status=r_secondary.status,
+    )
+
+
+# ---------------------------------------------------------------------------
+# Configuration
+# ---------------------------------------------------------------------------
+
+
+def load_env() -> tuple[str, str, str, List[str]]:
     sub_id = os.getenv("AZURE_SUBSCRIPTION_ID", "<your-azure-subscription-id>")
     rg = os.getenv("RESOURCE_GROUP", "<your-resource-group>")
     svc = os.getenv("APIM_SERVICE_NAME", "<your-apim-service>")
-
-    # Demo subscriptions (APIM subscription entity IDs)
-    target_sids = [
+    sids = [
         os.getenv("SUBSCRIPTION_SID_1", "sub1"),
         os.getenv("SUBSCRIPTION_SID_2", "sub2"),
     ]
+    return sub_id, rg, svc, sids
+
+
+def validate_required(sub_id: str, rg: str, svc: str) -> bool:
+    placeholders = [
+        ("AZURE_SUBSCRIPTION_ID", sub_id),
+        ("RESOURCE_GROUP", rg),
+        ("APIM_SERVICE_NAME", svc),
+    ]
+    missing = [name for name, val in placeholders if val.startswith("<")]
+    if missing:
+        logger.error("Missing required configuration: %s", ", ".join(missing))
+        return False
+    return True
+
+
+# ---------------------------------------------------------------------------
+# Main
+# ---------------------------------------------------------------------------
+
+
+def main(argv: Optional[Sequence[str]] = None) -> int:
+    # Allow user to set LOG_LEVEL for quick verbosity adjustments
+    user_level = os.getenv("LOG_LEVEL")
+    if user_level:
+        logger.setLevel(user_level.upper())
+
+    sub_id, rg, svc, sids = load_env()
+    if not validate_required(sub_id, rg, svc):
+        return 2
+
+    logger.info(
+        "APIM context subscription=%s resourceGroup=%s service=%s",
+        sub_id,
+        rg,
+        svc,
+    )
+    logger.info("Target SIDs: %s", ", ".join(sids))
 
     client = APIMClient(APIMPath(sub_id, rg, svc))
 
-    summary = []
-    for sid in target_sids:
-        print(f"\n== Rotating keys for APIM subscription '{sid}' ==")
+    results: List[OperationResult] = []
+    for sid in sids:
+        try:
+            results.append(rotate_for_sid(client, sid))
+        except APIMClientError as exc:
+            logger.error("SID=%s: rotation aborted: %s", sid, exc)
 
-        # Regenerate primary
-        r_primary = client.regenerate_primary(sid)
-        print(
-            f"Regenerate primary: HTTP {r_primary['status']} -> {'OK' if r_primary['ok'] else 'FAIL'}"
-        )
+    summary_serializable = [asdict(r) for r in results]
+    with open(SUMMARY_FILE, "w", encoding="utf-8") as fh:
+        json.dump(summary_serializable, fh, indent=2)
 
-        # Show keys (if caller has permission)
-        secrets = client.list_secrets(sid)
-        if secrets["ok"]:
-            pk = secrets["data"].get("primaryKey")
-            sk = secrets["data"].get("secondaryKey")
-            print(f"Primary (first 8): {pk[:8] + '...' if pk else 'N/A'}")
-            print(f"Secondary (first 8): {sk[:8] + '...' if sk else 'N/A'}")
-        else:
-            print(
-                f"Could not retrieve keys (HTTP {secrets['status']}). Ensure correct permissions."
-            )
-
-        # Regenerate secondary (optional but shown for completeness)
-        r_secondary = client.regenerate_secondary(sid)
-        print(
-            f"Regenerate secondary: HTTP {r_secondary['status']} -> {'OK' if r_secondary['ok'] else 'FAIL'}"
-        )
-
-        # Verify again
-        secrets_after = client.list_secrets(sid)
-        if secrets_after["ok"]:
-            pk2 = secrets_after["data"].get("primaryKey")
-            sk2 = secrets_after["data"].get("secondaryKey")
-            print(f"After rotation - Primary (first 8): {pk2[:8] + '...' if pk2 else 'N/A'}")
-            print(f"After rotation - Secondary (first 8): {sk2[:8] + '...' if sk2 else 'N/A'}")
-
-        summary.append(
-            {
-                "sid": sid,
-                "regeneratePrimary": r_primary["status"],
-                "regenerateSecondary": r_secondary["status"],
-            }
-        )
-
-    out = "apim_key_rotation_summary.json"
-    with open(out, "w", encoding="utf-8") as f:
-        json.dump(summary, f, indent=2)
-    print(f"\nSummary saved to {out}")
-
+    # Final note (print so user always sees)
+    print(f"Summary saved to {SUMMARY_FILE}")
     return 0
 
 
