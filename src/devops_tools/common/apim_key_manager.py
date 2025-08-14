@@ -25,6 +25,7 @@ Usage:
 
 from __future__ import annotations
 
+import argparse
 import hashlib
 import json
 import logging
@@ -209,54 +210,84 @@ def key_preview(key: Optional[str]) -> str:
     return f"{key[:KEY_PREFIX_LEN]}..."
 
 
-def rotate_for_sid(client: APIMClient, sid: str) -> OperationResult:
-    logger.info("SID=%s: starting rotation", sid)
+def rotate_for_sid(client: APIMClient, sid: str, order: list[str]) -> OperationResult:
+    """
+    Rotate keys for a SID following the specified order.
 
-    # Regenerate primary
-    r_primary = client.regenerate_primary(sid)
-    logger.info(
-        "SID=%s: regenerate primary -> %s",
-        sid,
-        f"{r_primary.status}{' OK' if r_primary.ok else ' FAIL'}",
-    )
+    order: list like ["primary","secondary"] or ["secondary","primary"]
+    """
+    logger.info("SID=%s: starting rotation order=%s", sid, "->".join(order))
 
-    # List (before secondary)
-    secrets = client.list_secrets(sid)
-    if secrets.ok:
+    r_primary: Optional[ApiResponse] = None
+    r_secondary: Optional[ApiResponse] = None
+
+    # Pre-snapshot (only logged at debug level)
+    pre = client.list_secrets(sid)
+    if pre.ok:
         logger.debug(
-            "SID=%s: snapshot primary=%s secondary=%s",
+            "SID=%s: pre primary=%s secondary=%s",
             sid,
-            key_preview(secrets.data.get("primaryKey")),
-            key_preview(secrets.data.get("secondaryKey")),
+            key_preview(pre.data.get("primaryKey")),
+            key_preview(pre.data.get("secondaryKey")),
         )
-    else:
-        logger.warning("SID=%s: listSecrets pre-secondary failed (%s)", sid, secrets.status)
 
-    # Regenerate secondary
-    r_secondary = client.regenerate_secondary(sid)
-    logger.info(
-        "SID=%s: regenerate secondary -> %s",
-        sid,
-        f"{r_secondary.status}{' OK' if r_secondary.ok else ' FAIL'}",
-    )
+    for which in order:
+        if which == "primary":
+            r_primary = client.regenerate_primary(sid)
+            logger.info(
+                "SID=%s: regenerate primary -> %s",
+                sid,
+                f"{r_primary.status}{' OK' if r_primary.ok else ' FAIL'}",
+            )
+        else:
+            r_secondary = client.regenerate_secondary(sid)
+            logger.info(
+                "SID=%s: regenerate secondary -> %s",
+                sid,
+                f"{r_secondary.status}{' OK' if r_secondary.ok else ' FAIL'}",
+            )
 
-    # Final snapshot
-    after = client.list_secrets(sid)
-    if after.ok:
-        logger.debug(
-            "SID=%s: final primary=%s secondary=%s",
-            sid,
-            key_preview(after.data.get("primaryKey")),
-            key_preview(after.data.get("secondaryKey")),
-        )
-    else:
-        logger.warning("SID=%s: listSecrets post-secondary failed (%s)", sid, after.status)
+        snap = client.list_secrets(sid)
+        if snap.ok:
+            logger.debug(
+                "SID=%s: snapshot after %s primary=%s secondary=%s",
+                sid,
+                which,
+                key_preview(snap.data.get("primaryKey")),
+                key_preview(snap.data.get("secondaryKey")),
+            )
+        else:
+            logger.warning(
+                "SID=%s: listSecrets failed after %s (HTTP %s)",
+                sid,
+                which,
+                snap.status,
+            )
 
     return OperationResult(
         sid=sid,
-        regenerate_primary_status=r_primary.status,
-        regenerate_secondary_status=r_secondary.status,
+        regenerate_primary_status=r_primary.status if r_primary else None,
+        regenerate_secondary_status=r_secondary.status if r_secondary else None,
     )
+
+
+def parse_args(argv: Optional[Sequence[str]]) -> argparse.Namespace:
+    parser = argparse.ArgumentParser(description="APIM subscription key rotation")
+    parser.add_argument(
+        "--rotate-order",
+        choices=["primary-first", "secondary-first"],
+        help="Override rotation order (default: primary-first or env APIM_ROTATE_ORDER)",
+    )
+    return parser.parse_args(argv)
+
+
+def resolve_order(arg_value: Optional[str]) -> list[str]:
+    # Priority: CLI flag > env var > default
+    val = arg_value or os.getenv("APIM_ROTATE_ORDER", "primary-first").lower()
+    if val == "secondary-first":
+        return ["secondary", "primary"]
+    # Fallback default
+    return ["primary", "secondary"]
 
 
 # ---------------------------------------------------------------------------
@@ -294,20 +325,23 @@ def validate_required(sub_id: str, rg: str, svc: str) -> bool:
 
 
 def main(argv: Optional[Sequence[str]] = None) -> int:
-    # Allow user to set LOG_LEVEL for quick verbosity adjustments
     user_level = os.getenv("LOG_LEVEL")
     if user_level:
         logger.setLevel(user_level.upper())
+
+    args = parse_args(argv)
 
     sub_id, rg, svc, sids = load_env()
     if not validate_required(sub_id, rg, svc):
         return 2
 
+    order = resolve_order(args.rotate_order)
     logger.info(
-        "APIM context subscription=%s resourceGroup=%s service=%s",
+        "APIM context subscription=%s resourceGroup=%s service=%s rotateOrder=%s",
         sub_id,
         rg,
         svc,
+        "->".join(order),
     )
     logger.info("Target SIDs: %s", ", ".join(sids))
 
@@ -316,7 +350,7 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
     results: List[OperationResult] = []
     for sid in sids:
         try:
-            results.append(rotate_for_sid(client, sid))
+            results.append(rotate_for_sid(client, sid, order))
         except APIMClientError as exc:
             logger.error("SID=%s: rotation aborted: %s", sid, exc)
 
@@ -324,7 +358,6 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
     with open(SUMMARY_FILE, "w", encoding="utf-8") as fh:
         json.dump(summary_serializable, fh, indent=2)
 
-    # Final note (print so user always sees)
     print(f"Summary saved to {SUMMARY_FILE}")
     return 0
 
