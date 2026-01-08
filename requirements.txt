@@ -21,6 +21,9 @@ gitpython>=3.1.0
 # Web tools
 flask>=2.3.0
 
+# DNS tools
+dnspython>=2.4.0
+
 # Development dependencies
 pytest>=7.4.0
 pytest-cov>=4.1.0
