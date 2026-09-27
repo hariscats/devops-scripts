@@ -276,20 +276,19 @@ def render(
         click.echo(buffer.getvalue(), nl=False)
         return
     console = Console()
-    if not rows:
+    if rows:
+        table = Table(title=Text(title) if title else None, header_style="bold")
+        for _, header in columns:
+            table.add_column(header, overflow="fold")
+        for row in rows:
+            style = row_style(row) if row_style else None
+            table.add_row(*(Text(cell(row.get(key))) for key, _ in columns), style=style)
+        console.print(table)
+    else:
         console.print(Text(empty_message))
-        return
-    table = Table(
-        title=Text(title) if title else None,
-        caption=Text(caption) if caption else None,
-        header_style="bold",
-    )
-    for _, header in columns:
-        table.add_column(header, overflow="fold")
-    for row in rows:
-        style = row_style(row) if row_style else None
-        table.add_row(*(Text(cell(row.get(key))) for key, _ in columns), style=style)
-    console.print(table)
+    if caption:
+        # Printed separately so it is not wrapped to the width of a narrow table.
+        console.print(Text(caption, style="dim"))
 
 
 def warn(message: str) -> None:

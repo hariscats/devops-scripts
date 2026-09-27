@@ -3,11 +3,13 @@
 from __future__ import annotations
 
 import json
+import logging
 from datetime import datetime, timedelta, timezone
 from typing import Any, Dict, Iterable, List, Optional, Set, Tuple
 
 import click
 
+from .client import AzureError
 from .common import (
     AzureContext,
     Row,
@@ -19,6 +21,8 @@ from .common import (
     short_resource_id,
     subscription_option,
 )
+
+logger = logging.getLogger(__name__)
 
 ACTIVITY_LOG_API_VERSION = "2015-04-01"
 MAX_LOOKBACK_HOURS = 90 * 24
@@ -189,7 +193,15 @@ def activity(
         "/eventtypes/management/values"
     )
     with progress("Reading the activity log..."):
-        events = list(client.paged(url, params=params))
+        try:
+            events = list(client.paged(url, params=params))
+        except AzureError as exc:
+            # $select trims the payload; fall back to full events if the service rejects it.
+            if exc.status != 400:
+                raise
+            logger.debug("Activity Log request failed (%s); retrying without $select", exc)
+            params.pop("$select")
+            events = list(client.paged(url, params=params))
     rows = summarize_events(
         events, include_actions=include_actions, failed_only=failed_only, caller=caller
     )
