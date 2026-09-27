@@ -27,6 +27,7 @@ classifiers = [
 dynamic = ["version"]
 dependencies = [
     "requests>=2.31.0",
+    "azure-identity>=1.15.0",
     "click>=8.1.0",
     "rich>=13.0.0",
     "pyyaml>=6.0",
@@ -55,6 +56,9 @@ git-analyzer = "devops_tools.git.analyzer:main"
 log-analyzer = "devops_tools.monitoring.log_analyzer:main"
 har-viewer = "devops_tools.web.har_viewer:main"
 trace-runner = "devops_tools.monitoring.trace_runner:main"
+azure-tools = "devops_tools.azure.cli:main"
+azure-apim-rotate = "devops_tools.azure.apim_key_manager:main"
+azure-openai-sim = "devops_tools.azure.openai_tpm_rpm_simulator:main"
 
 [project.urls]
 Homepage = "https://github.com/hariscats/devops-scripts"
@@ -85,6 +89,9 @@ testpaths = ["tests"]
 python_files = ["test_*.py"]
 python_classes = ["Test*"]
 python_functions = ["test_*"]
+markers = [
+    "integration: tests that need external services such as a Docker daemon",
+]
 
 [tool.coverage.run]
 source = ["src"]
